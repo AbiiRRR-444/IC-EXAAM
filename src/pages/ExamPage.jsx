@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { AlertTriangle, ChevronLeft, ChevronRight, Send, Maximize } from "lucide-react";
+import { ChevronLeft, ChevronRight, Send, Maximize } from "lucide-react";
 import BackgroundFX from "../components/BackgroundFX";
 import Timer from "../components/Timer";
 import ProgressBar from "../components/ProgressBar";
@@ -10,7 +10,7 @@ import GlassCard from "../components/GlassCard";
 import { saveSubmission, saveExamProgress, clearExamProgress } from "../utils/storage";
 import { generateId } from "../utils/helpers";
 
-const EXAM_DURATION = 30 * 60; // 30 minutes in seconds
+const EXAM_DURATION = 30 * 60;
 
 export default function ExamPage() {
   const navigate = useNavigate();
@@ -18,20 +18,18 @@ export default function ExamPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState({});
   const [submitted, setSubmitted] = useState(false);
-  const [warning, setWarning] = useState(null); // { type, message }
   const submittedRef = useRef(false);
   const candidateRef = useRef(null);
 
-  // ============================================================
-  // ANTI-CHEAT: Load candidate, redirect if not registered
-  // ============================================================
   useEffect(() => {
     const candidate = sessionStorage.getItem("airforce_candidate");
-    if (!candidate) { navigate("/register"); return; }
+    if (!candidate) {
+      navigate("/register");
+      return;
+    }
     candidateRef.current = JSON.parse(candidate);
-  }, []);
+  }, [navigate]);
 
-  // Load questions
   useEffect(() => {
     fetch("/questions.json")
       .then((r) => r.json())
@@ -39,10 +37,7 @@ export default function ExamPage() {
       .catch(console.error);
   }, []);
 
-  // ============================================================
-  // AUTO-SUBMIT FUNCTION
-  // ============================================================
-  const submitExam = useCallback((reason) => {
+  const submitExam = useCallback(async (reason) => {
     if (submittedRef.current) return;
     submittedRef.current = true;
     setSubmitted(true);
@@ -59,36 +54,33 @@ export default function ExamPage() {
       reviewed: false,
     };
 
-    saveSubmission(submission);
-    clearExamProgress();
-    sessionStorage.setItem("airforce_last_submission_id", submission.id);
-    sessionStorage.removeItem("airforce_candidate");
-    navigate("/submitted");
+    try {
+      await saveSubmission(submission);
+      clearExamProgress();
+      sessionStorage.setItem("airforce_last_submission_id", submission.id);
+      sessionStorage.removeItem("airforce_candidate");
+      navigate("/submitted");
+    } catch (error) {
+      console.error("Submission failed:", error);
+      alert("Failed to submit exam. Please check your internet connection and try again.");
+      submittedRef.current = false;
+      setSubmitted(false);
+    }
   }, [answers, navigate]);
 
-  // ============================================================
-  // ANTI-CHEAT: Visibility change (tab switch / minimize)
-  // ============================================================
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden && !submittedRef.current) {
-        // ⚠️ ANTI-CHEAT: Tab switched or window minimized
         submitExam("tab_switch");
       }
     };
 
-    // ============================================================
-    // ANTI-CHEAT: Window blur (focus lost — another app, devtools, etc.)
-    // ============================================================
     const handleBlur = () => {
       if (!submittedRef.current) {
         submitExam("window_blur");
       }
     };
 
-    // ============================================================
-    // ANTI-CHEAT: Fullscreen exit detection
-    // ============================================================
     const handleFullscreenChange = () => {
       const isFullscreen =
         document.fullscreenElement ||
@@ -114,13 +106,9 @@ export default function ExamPage() {
     };
   }, [submitExam]);
 
-  // ============================================================
-  // ANTI-CHEAT: Block right-click and common keyboard shortcuts
-  // ============================================================
   useEffect(() => {
     const blockContextMenu = (e) => e.preventDefault();
     const blockKeys = (e) => {
-      // Block F12, Ctrl+Shift+I, Ctrl+U, Ctrl+S, etc.
       if (
         e.key === "F12" ||
         (e.ctrlKey && e.shiftKey && ["I", "J", "C"].includes(e.key.toUpperCase())) ||
@@ -129,22 +117,22 @@ export default function ExamPage() {
         e.preventDefault();
       }
     };
+
     document.addEventListener("contextmenu", blockContextMenu);
     document.addEventListener("keydown", blockKeys);
+
     return () => {
       document.removeEventListener("contextmenu", blockContextMenu);
       document.removeEventListener("keydown", blockKeys);
     };
   }, []);
 
-  // Request fullscreen on mount
   useEffect(() => {
     const el = document.documentElement;
     if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
     else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
   }, []);
 
-  // Auto-save progress
   useEffect(() => {
     if (!submitted) {
       saveExamProgress({ currentIndex, answers });
@@ -173,9 +161,12 @@ export default function ExamPage() {
         <div className="relative z-20 text-center">
           <motion.div
             className="w-16 h-16 border-2 border-cyan-400/40 border-t-cyan-400 rounded-full mx-auto mb-4"
-            animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
           />
-          <p className="font-display text-cyan-400 text-sm tracking-widest">LOADING MISSION DATA...</p>
+          <p className="font-display text-cyan-400 text-sm tracking-widest">
+            LOADING MISSION DATA...
+          </p>
         </div>
       </div>
     );
@@ -185,16 +176,19 @@ export default function ExamPage() {
     <div className="relative min-h-screen bg-navy-950 overflow-hidden select-none">
       <BackgroundFX />
 
-      {/* Fullscreen prompt overlay */}
       <AnimatePresence>
         {!document.fullscreenElement && !submitted && (
           <motion.div
             className="fixed inset-0 z-50 bg-navy-950/95 flex items-center justify-center p-4"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
           >
             <GlassCard className="max-w-sm w-full p-8 text-center" glow animate={false}>
               <Maximize className="w-12 h-12 text-cyan-400 mx-auto mb-4" />
-              <h2 className="font-display text-lg font-bold text-white mb-2 tracking-wide">Fullscreen Required</h2>
+              <h2 className="font-display text-lg font-bold text-white mb-2 tracking-wide">
+                Fullscreen Required
+              </h2>
               <p className="font-body text-sm text-metal-400 mb-6">
                 This exam must be taken in fullscreen mode. Exiting fullscreen will auto-submit your paper.
               </p>
@@ -211,22 +205,22 @@ export default function ExamPage() {
       </AnimatePresence>
 
       <div className="relative z-20 min-h-screen flex flex-col">
-        {/* Top HUD bar */}
         <div className="sticky top-0 z-30 border-b border-cyan-500/20 bg-navy-950/90 backdrop-blur-md px-4 py-3">
           <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-4">
-            {/* Candidate info */}
             <div>
-              <div className="font-mono text-xs text-metal-500 tracking-wider uppercase">Candidate</div>
+              <div className="font-mono text-xs text-metal-500 tracking-wider uppercase">
+                Candidate
+              </div>
               <div className="font-display text-sm text-white font-bold">
                 {candidateRef.current?.fullName || "—"}
               </div>
-              <div className="font-mono text-xs text-metal-500">{candidateRef.current?.serviceNumber}</div>
+              <div className="font-mono text-xs text-metal-500">
+                {candidateRef.current?.serviceNumber}
+              </div>
             </div>
 
-            {/* Timer */}
             <Timer totalSeconds={EXAM_DURATION} onExpire={() => submitExam("time_expired")} />
 
-            {/* Submit button */}
             <motion.button
               onClick={() => {
                 if (window.confirm("Are you sure you want to submit your exam? This cannot be undone.")) {
@@ -236,33 +230,31 @@ export default function ExamPage() {
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
               className="flex items-center gap-2 px-4 py-2 rounded-lg font-display text-xs font-bold tracking-widest uppercase text-navy-950"
-              style={{ background: "linear-gradient(135deg, #22d3ee, #0ea5e9)", boxShadow: "0 0 15px rgba(34,211,238,0.3)" }}
+              style={{
+                background: "linear-gradient(135deg, #22d3ee, #0ea5e9)",
+                boxShadow: "0 0 15px rgba(34,211,238,0.3)",
+              }}
             >
               <Send className="w-4 h-4" />
               Submit
             </motion.button>
           </div>
 
-          {/* Progress bar */}
           <div className="max-w-4xl mx-auto mt-3">
-            <ProgressBar
-              current={currentIndex + 1}
-              total={questions.length}
-              answered={answeredCount}
-            />
+            <ProgressBar current={currentIndex + 1} total={questions.length} answered={answeredCount} />
           </div>
         </div>
 
-        {/* Question area */}
         <div className="flex-1 flex flex-col items-center justify-start px-4 py-8">
           <div className="w-full max-w-2xl">
-            {/* Question type section labels */}
             <div className="mb-4 flex items-center gap-2">
               <div className="h-px flex-1 bg-cyan-500/10" />
               <span className="font-mono text-xs text-metal-500 tracking-widest px-3 uppercase">
-                {currentQ?.type === "mcq" ? "Section A — Multiple Choice" :
-                 currentQ?.type === "short" ? "Section B — Short Answer" :
-                 "Section C — Long Answer"}
+                {currentQ?.type === "mcq"
+                  ? "Section A — Multiple Choice"
+                  : currentQ?.type === "short"
+                  ? "Section B — Short Answer"
+                  : "Section C — Long Answer"}
               </span>
               <div className="h-px flex-1 bg-cyan-500/10" />
             </div>
@@ -276,7 +268,6 @@ export default function ExamPage() {
               />
             </GlassCard>
 
-            {/* Navigation */}
             <div className="mt-5 flex items-center justify-between">
               <motion.button
                 onClick={() => setCurrentIndex((i) => Math.max(0, i - 1))}
@@ -284,16 +275,16 @@ export default function ExamPage() {
                 whileHover={currentIndex > 0 ? { scale: 1.03 } : {}}
                 whileTap={currentIndex > 0 ? { scale: 0.97 } : {}}
                 className={`flex items-center gap-2 px-5 py-2.5 rounded-xl border font-display text-xs font-bold tracking-widest uppercase transition-all
-                  ${currentIndex === 0
-                    ? "border-slate-700/30 text-metal-600 cursor-not-allowed"
-                    : "border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10"
+                  ${
+                    currentIndex === 0
+                      ? "border-slate-700/30 text-metal-600 cursor-not-allowed"
+                      : "border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10"
                   }`}
               >
                 <ChevronLeft className="w-4 h-4" />
                 Previous
               </motion.button>
 
-              {/* Question dots */}
               <div className="flex items-center gap-1.5 flex-wrap justify-center max-w-xs">
                 {questions.map((q, i) => (
                   <button
@@ -301,11 +292,12 @@ export default function ExamPage() {
                     onClick={() => setCurrentIndex(i)}
                     title={`Question ${i + 1}`}
                     className={`w-6 h-6 rounded-md text-xs font-mono transition-all
-                      ${i === currentIndex
-                        ? "bg-cyan-400 text-navy-950 font-bold"
-                        : answers[q.id]
-                        ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/40"
-                        : "bg-slate-700/40 text-metal-500 hover:bg-slate-600/40"
+                      ${
+                        i === currentIndex
+                          ? "bg-cyan-400 text-navy-950 font-bold"
+                          : answers[q.id]
+                          ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/40"
+                          : "bg-slate-700/40 text-metal-500 hover:bg-slate-600/40"
                       }`}
                   >
                     {i + 1}
@@ -319,9 +311,10 @@ export default function ExamPage() {
                 whileHover={currentIndex < questions.length - 1 ? { scale: 1.03 } : {}}
                 whileTap={currentIndex < questions.length - 1 ? { scale: 0.97 } : {}}
                 className={`flex items-center gap-2 px-5 py-2.5 rounded-xl border font-display text-xs font-bold tracking-widest uppercase transition-all
-                  ${currentIndex === questions.length - 1
-                    ? "border-slate-700/30 text-metal-600 cursor-not-allowed"
-                    : "border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10"
+                  ${
+                    currentIndex === questions.length - 1
+                      ? "border-slate-700/30 text-metal-600 cursor-not-allowed"
+                      : "border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10"
                   }`}
               >
                 Next
@@ -329,13 +322,14 @@ export default function ExamPage() {
               </motion.button>
             </div>
 
-            {/* Unanswered hint */}
             {questions.length > 0 && answeredCount < questions.length && (
               <motion.p
                 className="mt-4 text-center font-mono text-xs text-metal-500"
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
               >
-                {questions.length - answeredCount} question{questions.length - answeredCount !== 1 ? "s" : ""} remaining
+                {questions.length - answeredCount} question
+                {questions.length - answeredCount !== 1 ? "s" : ""} remaining
               </motion.p>
             )}
           </div>
