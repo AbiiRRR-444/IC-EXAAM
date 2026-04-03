@@ -1,42 +1,79 @@
+import { supabase } from "../lib/supabase";
+
 // ============================================================
 // STORAGE UTILITY
-// All data is stored in localStorage for demo purposes.
-// In production, replace with Firebase or a real database.
+// Submissions -> Supabase
+// Admin session + exam progress -> browser storage
 // ============================================================
 
-const SUBMISSIONS_KEY = "airforce_exam_submissions";
 const ADMIN_SESSION_KEY = "airforce_admin_session";
 const EXAM_PROGRESS_KEY = "airforce_exam_progress";
 
-// ---- SUBMISSIONS ----
+// ---- SUBMISSIONS (SUPABASE) ----
 
-export function saveSubmission(submission) {
-  const all = getAllSubmissions();
-  all.push(submission);
-  localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(all));
+export async function saveSubmission(submission) {
+  const { error } = await supabase.from("submissions").insert([
+    {
+      candidate_name: submission.candidate?.fullName || "",
+      candidate_id: submission.candidate?.serviceNumber || "",
+      rank: submission.candidate?.rank || "",
+      unit: submission.candidate?.unit || "",
+      answers: submission.answers || {},
+      submit_reason: submission.submitReason || "",
+      submitted_at: submission.submittedAt || new Date().toISOString(),
+      reviewed: submission.reviewed || false,
+      admin_feedback: submission.adminFeedback || "",
+      admin_marks: submission.adminMarks || {},
+    },
+  ]);
+
+  if (error) {
+    console.error("Supabase saveSubmission error:", error);
+    throw error;
+  }
 }
 
-export function getAllSubmissions() {
-  try {
-    return JSON.parse(localStorage.getItem(SUBMISSIONS_KEY)) || [];
-  } catch {
+export async function getAllSubmissions() {
+  const { data, error } = await supabase
+    .from("submissions")
+    .select("*")
+    .order("submitted_at", { ascending: false });
+
+  if (error) {
+    console.error("Supabase getAllSubmissions error:", error);
     return [];
   }
+
+  return data || [];
 }
 
-export function updateSubmission(id, updates) {
-  const all = getAllSubmissions();
-  const idx = all.findIndex((s) => s.id === id);
-  if (idx !== -1) {
-    all[idx] = { ...all[idx], ...updates };
-    localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(all));
-    return true;
+export async function updateSubmission(id, updates) {
+  const { error } = await supabase
+    .from("submissions")
+    .update(updates)
+    .eq("id", id);
+
+  if (error) {
+    console.error("Supabase updateSubmission error:", error);
+    return false;
   }
-  return false;
+
+  return true;
 }
 
-export function getSubmissionById(id) {
-  return getAllSubmissions().find((s) => s.id === id) || null;
+export async function getSubmissionById(id) {
+  const { data, error } = await supabase
+    .from("submissions")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (error) {
+    console.error("Supabase getSubmissionById error:", error);
+    return null;
+  }
+
+  return data;
 }
 
 // ---- ADMIN SESSION ----
@@ -57,7 +94,7 @@ export function clearAdminSession() {
   sessionStorage.removeItem(ADMIN_SESSION_KEY);
 }
 
-// ---- EXAM PROGRESS (auto-save) ----
+// ---- EXAM PROGRESS ----
 
 export function saveExamProgress(data) {
   localStorage.setItem(EXAM_PROGRESS_KEY, JSON.stringify(data));
