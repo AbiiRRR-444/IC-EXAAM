@@ -1,4 +1,4 @@
-# ✈️ AirForce Exam Portal
+#  AirForce Exam Portal
 
 A premium, military aviation-themed online examination platform with anti-cheat enforcement, admin-only result review, and manual marking for written answers.
 
